@@ -1,5 +1,5 @@
 from .base import VendorFingerprint, match_fingerprint
-from . import comcast,txu_energy,summer_energy,atmos_energy,houston_water,cirro_energy
+from . import comcast,txu_energy,summer_energy,atmos_energy,houston_water,cirro_energy,metro_water_nashville,piedmont_natural_gas,arlington_utilities
 
 VENDOR_MODULES = [
     comcast,
@@ -7,7 +7,10 @@ VENDOR_MODULES = [
     summer_energy,
     atmos_energy,
     houston_water,
-    cirro_energy
+    cirro_energy,
+    metro_water_nashville,
+    piedmont_natural_gas,
+    arlington_utilities,
                   ]
 
 def apply_vendor_enhancements(parsed: dict, txt: str):
