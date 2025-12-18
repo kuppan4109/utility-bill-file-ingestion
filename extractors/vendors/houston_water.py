@@ -84,13 +84,26 @@ def enhance(parsed: dict, txt: str):
     # -----------------------------------
     # Meter + usage
     # -----------------------------------
+   # Meter number (keep existing logic)
     m = re.search(r"WATER\s+MULTIF\s+([A-Z0-9\-\.]+)", txt)
     if m:
         out["meters"] = [{"meter_number": m.group(1)}]
 
-    m = re.search(r"Gallons\s+in\s+Thousands\s+(\d+)", txt)
-    if m:
-        out["total_usage"] = float(m.group(1))
+    # Usage = Current Meter Reading - Previous Meter Reading
+    prev_m = re.search(r"Previous\s+Meter\s+Reading\s+(\d+)", txt, re.I)
+    cur_m = re.search(r"Current\s+Meter\s+Reading\s+(\d+)", txt, re.I)
+
+    if prev_m and cur_m:
+        try:
+            prev_val = float(prev_m.group(1))
+            cur_val = float(cur_m.group(1))
+            if cur_val >= prev_val:
+                usage = cur_val - prev_val
+                out["units_used"] = usage
+                out["total_usage"] = usage
+        except Exception:
+            pass
+
 
     # -----------------------------------
     # Account summary
@@ -125,7 +138,7 @@ def enhance(parsed: dict, txt: str):
     cons_water = _money(m.group(1)) if m else 0.0
 
     if base_water or cons_water:
-        out["water_charges"] = base_water + cons_water
+        out["water_charges"] = round(base_water + cons_water, 2)
 
     m = re.search(r"Multifamily\s+Base\s+Sewer\s+Charge\s*\$([\d,]+\.\d{2})", txt)
     base_sewer = _money(m.group(1)) if m else 0.0

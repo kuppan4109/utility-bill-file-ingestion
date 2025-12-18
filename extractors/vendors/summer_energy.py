@@ -82,18 +82,36 @@ def enhance(parsed: dict, txt: str):
     )
     if m:
         out["current_charges"] = _money(m.group(1))
+    
+    if out.get("current_charges") and not out.get("electric_charges"):
+        out["electric_charges"] = out["current_charges"]
+
 
     # --------------------------------------------------
     # Total Amount Due (authoritative)
     # Amount Due Sep 05, 2024: $12202.63
     # --------------------------------------------------
+    # Amount Due Sep 05, 2024
     m = re.search(
-        r"Amount\s+Due\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}:\s*\$([\d,]+\.\d{2})",
-        txt,
-        re.I,
+    r"Amount\s+Due\s+([A-Za-z]{3}\s+\d{1,2},\s+\d{4})\s*:\s*\$([\d,]+\.\d{2})",
+    txt,
+    re.I,
     )
     if m:
-        out["total_amount_due"] = _money(m.group(1))
+        out["due_date"] = m.group(1)
+        out["total_amount_due"] = _money(m.group(2))
+    
+    # Fallback: Current Balance == Total Amount Due (Summer Energy)
+    if not out.get("total_amount_due"):
+        m = re.search(
+            r"Current\s+Balance\s*\$([\d,]+\.\d{2})",
+            txt,
+            re.I,
+        )
+        if m:
+            out["total_amount_due"] = _money(m.group(1))
+
+
 
     # --------------------------------------------------
     # Cleanup bad generic extractions

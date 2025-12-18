@@ -1,12 +1,12 @@
-# extractors/vendors/txu.py
+# extractors/vendors/txu_energy.py
 import re
-from .base import VendorFingerprint, fill_if_missing
+from .base import VendorFingerprint
 
 FINGERPRINT = VendorFingerprint(
-    name="txu_energy",
+    name="txu",
     keywords=[
         "txu",
-        "energy",
+        "txu energy",
         "account summary",
         "kwh",
         "esi id",
@@ -20,7 +20,12 @@ FINGERPRINT = VendorFingerprint(
 def _money(val: str):
     if not val:
         return None
-    s = val.replace("$", "").replace(",", "").strip()
+    s = (
+        val.replace("$", "")
+        .replace("", "")   # TXU private currency glyph
+        .replace(",", "")
+        .strip()
+    )
     try:
         return float(s)
     except Exception:
@@ -29,55 +34,83 @@ def _money(val: str):
 def enhance(parsed: dict, txt: str):
     out = dict(parsed or {})
 
-    fill_if_missing(out, "provider_name", "TXU Energy")
-    fill_if_missing(out, "utility_type", "electricity")
-    fill_if_missing(out, "usage_unit", "kWh")
+    # --------------------------------------------------
+    # Vendor authority
+    # --------------------------------------------------
+    out["provider_name"] = "TXU Energy"
+    out["vendor_name"] = "TXU Energy"
+    out["utility_type"] = "electricity"
+    out["usage_unit"] = "kWh"
 
-    # ----------------------------------------------------
-    # TXU Account Summary table parsing (CORRECT METHOD)
-    # ----------------------------------------------------
-    #
-    # Header:
-    # Previous Balance | Credits | Balance Forward | Current Charges | Amount Due | Due Date
-    #
-    # Data row:
-    # 2749.58 0.00 2749.58 1038.14 3787.72 12/06/2024
-    #
-
-    table_match = re.search(
-        r"Account Summary.*?\n([^\n]+)\n([^\n]+)",
+    # --------------------------------------------------
+    # Customer / Property name (trim padded junk)
+    # --------------------------------------------------
+    m = re.search(
+        r"Customer\s+Name:\s*([A-Z0-9 ()&.'\-]+?)\s{2,}",
         txt,
-        re.I | re.S,
+    )
+    if m:
+        out["customer_name"] = m.group(1).strip()
+
+    # --------------------------------------------------
+    # Account number (authoritative)
+    # --------------------------------------------------
+    m = re.search(r"Account\s+Number:\s*(\d{6,})", txt)
+    if m:
+        out["account_number"] = m.group(1)
+
+    # --------------------------------------------------
+    # Billing date
+    # --------------------------------------------------
+    m = re.search(r"Invoice\s+Date:\s*(\d{2}/\d{2}/\d{4})", txt)
+    if m:
+        out["statement_issued"] = m.group(1)
+
+    # --------------------------------------------------
+    # TXU ACCOUNT SUMMARY ROW (SINGLE SOURCE OF TRUTH)
+    # Matches:
+    # $2,749.58  $0.00  $2,749.58  $1,038.14  $3,787.72  12/06/2024
+    # --------------------------------------------------
+    summary_row = re.search(
+        r"\$([\d,]+\.\d{2})\s+"
+        r"\$([\d,]+\.\d{2})\s+"
+        r"\$([\d,]+\.\d{2})\s+"
+        r"\$([\d,]+\.\d{2})\s+"
+        r"\$([\d,]+\.\d{2})\s+"
+        r"(\d{2}/\d{2}/\d{4})",
+        txt,
     )
 
-    if table_match:
-        header = table_match.group(1).lower()
-        row = table_match.group(2)
+    if summary_row:
+        out["previous_balance"] = _money(summary_row.group(1))
+        out["payments"] = _money(summary_row.group(2))
+        out["balance_forward"] = _money(summary_row.group(3))
+        out["current_charges"] = _money(summary_row.group(4))
+        out["total_amount_due"] = _money(summary_row.group(5))
+        out["due_date"] = summary_row.group(6)
 
-        # Ensure this is the correct table
-        if "amount due" in header and "current charges" in header:
-            nums = re.findall(r"\$?\d{1,3}(?:,\d{3})*\.\d{2}", row)
+    # --------------------------------------------------
+    # TXU does NOT reliably publish service period
+    # Never guess → explicitly remove if present
+    # --------------------------------------------------
+    out.pop("service_start", None)
+    out.pop("service_end", None)
 
-            # Expected order:
-            # [previous_balance, credits, balance_forward, current_charges, amount_due]
-            if len(nums) >= 5:
-                val = _money(nums[4])
-                if val is not None:
-                    out["total_amount_due"] = val
+    # --------------------------------------------------
+    # Optional usage (non-blocking)
+    # --------------------------------------------------
+    m = re.search(r"Total\s+kWh\s+Usage\s+([\d,]+)", txt, re.I)
+    if m:
+        try:
+            out["total_usage"] = float(m.group(1).replace(",", ""))
+        except Exception:
+            pass
 
-    # ----------------------------------------------------
-    # Fallback: explicit Amount Due (non-table cases)
-    # ----------------------------------------------------
-    if out.get("total_amount_due") is None:
-        m = re.search(
-            r"\bAmount Due\b\s*\$?([\d,]+\.\d{2})",
-            txt,
-            re.I,
-        )
-        if m:
-            val = _money(m.group(1))
-            if val is not None:
-                out["total_amount_due"] = val
+    # --------------------------------------------------
+    # Optional rate plan
+    # --------------------------------------------------
+    m = re.search(r"Rate\s+Plan:\s*([A-Z0-9 \-]+)", txt)
+    if m:
+        out["rate_plan"] = m.group(1).strip()
 
-    out.setdefault("vendor_name", "TXU Energy")
     return out

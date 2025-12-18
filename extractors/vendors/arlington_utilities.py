@@ -37,11 +37,23 @@ def enhance(parsed: dict, txt: str):
     out["usage_unit"] = "KGAL"
 
     # --------------------------------------------------
-    # Property / Customer name
+    # Property / Customer name (AUTHORITATIVE)
+    # Appears under "Name and Service Address"
     # --------------------------------------------------
-    m = re.search(r"\n([A-Z][A-Z0-9\s]+APARTMENTS LLC)\n", txt)
+    m = re.search(r"Name\s+and\s+Service\s+Address.*?\n([^\n]+)", txt, re.I | re.S)
     if m:
-        out["customer_name"] = m.group(1).strip()
+        line = m.group(1)
+
+        # Split by large spacing to separate columns
+        parts = re.split(r"\s{2,}", line)
+
+        if len(parts) >= 2:
+            candidate = parts[-1].strip()
+
+            # Guard against left-column noise
+            if not re.search(r"\bemergency\b|\bgarbage\b|\bdrinking\b|817-", candidate, re.I):
+                out["customer_name"] = candidate
+
 
     # --------------------------------------------------
     # Account number

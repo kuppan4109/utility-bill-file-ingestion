@@ -40,9 +40,14 @@ def enhance(parsed: dict, txt: str):
     # --------------------------------------------------
     # Customer / Property
     # --------------------------------------------------
-    m = re.search(r"Customer\s+Name:\s*(.+)", txt, re.I)
+    m = re.search(
+    r"Customer\s+Name:\s*(.*?)\s{2,}(?:www\.|BillingDate:|AccountNumber:)",
+    txt,
+    re.I,
+    )
     if m:
         out["customer_name"] = m.group(1).strip()
+
 
     # --------------------------------------------------
     # Account number
